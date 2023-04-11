@@ -1,0 +1,101 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include "DHT.h"
+#include <WiFiUdp.h>
+#include <NTPClient.h>
+
+
+const char* ssid = "Gera20011";
+const char* password = "gemelos2001";
+
+
+DHT dht(5, DHT11);
+
+
+WebServer server(80);
+
+
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600, 60000);
+
+
+const int motorPin = 2;
+const int led1Pin = 22;
+const int led2Pin = 23;
+
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  WiFi.begin(ssid, password);
+
+
+  pinMode(motorPin, OUTPUT);
+  pinMode(led1Pin, OUTPUT);
+  pinMode(led2Pin, OUTPUT);
+ 
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+
+
+  Serial.println("Connected to WiFi");
+  Serial.println(WiFi.localIP());
+
+
+  server.on("/", handleRoot);
+
+
+  server.begin();
+  Serial.println("Server started");
+
+
+  timeClient.begin();
+  timeClient.setTimeOffset(-18000); // UTC-5 (Peru time)
+}
+
+
+void handleRoot() {
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+
+
+  String html = "<html><body><h1>ESP32 DHT11 Sensor</h1>";
+  html += "<p>Temperature: ";
+  html += temperature;
+  html += " &deg;C</p>";
+  html += "<p>Humidity: ";
+  html += humidity;
+  html += " %</p>";
+  html += "<p>IP Address: ";
+  html += WiFi.localIP().toString();
+  html += "</p></body></html>";
+
+
+  server.send(200, "text/html", html);
+
+
+  timeClient.update();
+  int hour = timeClient.getHours();
+  if (hour >= 23 || hour < 21) { // Night time condition (6pm - 6am)
+    if (temperature < 29) {
+      digitalWrite(motorPin, HIGH);
+      digitalWrite(led1Pin, HIGH);
+      digitalWrite(led2Pin, HIGH);
+    } else {
+      digitalWrite(motorPin, LOW);
+      digitalWrite(led1Pin, LOW);
+      digitalWrite(led2Pin, LOW);
+    }
+  } else {
+    digitalWrite(motorPin, LOW);
+    digitalWrite(led1Pin, LOW);
+    digitalWrite(led2Pin, LOW);
+  }
+}
+
+
+void loop() {
+  server.handleClient();
+}
